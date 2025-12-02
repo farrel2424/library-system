@@ -1,0 +1,120 @@
+<?php
+$pageTitle = 'Edit Book';
+require_once '../../includes/header.php';
+
+$errors = [];
+$book_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+
+// Get book data
+$stmt = $conn->prepare("SELECT * FROM books_data WHERE book_id = ?");
+$stmt->bind_param("i", $book_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($result->num_rows == 0) {
+    $_SESSION['error'] = 'Book not found';
+    header("Location: index.php");
+    exit();
+}
+
+$book = $result->fetch_assoc();
+$stmt->close();
+
+// Process form submission
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $title = clean($_POST['title']);
+    $author = clean($_POST['author']);
+    $category = clean($_POST['category']);
+    $isbn = clean($_POST['isbn']);
+    $stock = intval($_POST['stock']);
+    
+    // Validation
+    if (empty($title)) $errors[] = 'Title is required';
+    if (empty($author)) $errors[] = 'Author is required';
+    if (empty($category)) $errors[] = 'Category is required';
+    if ($stock < 0) $errors[] = 'Stock cannot be negative';
+    
+    // Auto-set status based on stock
+    if ($stock == 0) {
+        $status = 'unavailable';
+    } else {
+        $status = 'available';
+    }
+    
+    // Update if no errors
+    if (empty($errors)) {
+        $stmt = $conn->prepare("UPDATE books_data SET title = ?, author = ?, category = ?, isbn = ?, stock = ?, status = ? WHERE book_id = ?");
+        $stmt->bind_param("ssssisi", $title, $author, $category, $isbn, $stock, $status, $book_id);
+        
+        if ($stmt->execute()) {
+            $_SESSION['success'] = 'Book updated successfully!';
+            header("Location: index.php");
+            exit();
+        } else {
+            $errors[] = 'Failed to update book: ' . $conn->error;
+        }
+        $stmt->close();
+    }
+}
+?>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Edit Book</h3>
+        <a href="index.php" class="btn btn-secondary">← Back to List</a>
+    </div>
+    
+    <?php if (!empty($errors)): ?>
+        <div class="alert alert-danger">
+            <ul style="margin: 0; padding-left: 20px;">
+                <?php foreach ($errors as $error): ?>
+                    <li><?php echo $error; ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    <?php endif; ?>
+    
+    <form method="POST" action="">
+        <div class="form-group">
+            <label for="title">Book Title *</label>
+            <input type="text" name="title" id="title" class="form-control" 
+                   value="<?php echo htmlspecialchars(isset($_POST['title']) ? $_POST['title'] : $book['title']); ?>" 
+                   required>
+        </div>
+        
+        <div class="form-group">
+            <label for="author">Author *</label>
+            <input type="text" name="author" id="author" class="form-control" 
+                   value="<?php echo htmlspecialchars(isset($_POST['author']) ? $_POST['author'] : $book['author']); ?>" 
+                   required>
+        </div>
+        
+        <div class="form-group">
+            <label for="category">Category *</label>
+            <input type="text" name="category" id="category" class="form-control" 
+                   value="<?php echo htmlspecialchars(isset($_POST['category']) ? $_POST['category'] : $book['category']); ?>" 
+                   required>
+        </div>
+        
+        <div class="form-group">
+            <label for="isbn">ISBN</label>
+            <input type="text" name="isbn" id="isbn" class="form-control" 
+                   value="<?php echo htmlspecialchars(isset($_POST['isbn']) ? $_POST['isbn'] : $book['isbn']); ?>">
+        </div>
+        
+        <div class="form-group">
+            <label for="stock">Stock Quantity *</label>
+            <input type="number" name="stock" id="stock" class="form-control" 
+                   value="<?php echo isset($_POST['stock']) ? $_POST['stock'] : $book['stock']; ?>" 
+                   min="0" required>
+            <small style="color: #666;">Current stock: <?php echo $book['stock']; ?>. Status will update automatically based on stock.</small>
+        </div>
+        
+        <div class="form-group">
+            <button type="submit" class="btn btn-primary">Update Book</button>
+            <a href="index.php" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<?php require_once '../../includes/footer.php'; ?>
