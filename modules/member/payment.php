@@ -11,7 +11,7 @@ if (!isMember()) {
 
 $member_id = $_SESSION['member_id'];
 
-// Handle payment submission
+// Handle payment submission for returned books
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['pay_fine'])) {
     $return_id = intval($_POST['return_id']);
     $payment_method = clean($_POST['payment_method']);
@@ -89,7 +89,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['pay_penalty'])) {
     exit();
 }
 
-// Get unpaid fines
+// Get CURRENT OVERDUE BOOKS (not yet returned) - NEW!
+$current_overdue = $conn->prepare("
+    SELECT bt.borrow_id, b.title, b.author, bt.borrow_date, bt.due_date,
+           DATEDIFF(CURDATE(), bt.due_date) as days_overdue
+    FROM borrowing_transactions bt
+    JOIN books_data b ON bt.book_id = b.book_id
+    WHERE bt.member_id = ? AND bt.status = 'borrowed' AND bt.due_date < CURDATE()
+    ORDER BY bt.due_date ASC
+");
+$current_overdue->bind_param("i", $member_id);
+$current_overdue->execute();
+$current_overdue_result = $current_overdue->get_result();
+
+// Get unpaid fines (from returned books)
 $unpaid_fines = $conn->prepare("
     SELECT rt.*, bt.borrow_id, b.title, b.author, bt.borrow_date, bt.due_date,
            DATEDIFF(CURDATE(), rt.return_date) as days_since_return
@@ -129,11 +142,22 @@ $penalties_result = $penalties->get_result();
 
 // Calculate totals
 $total_unpaid = 0;
+$total_estimated_overdue = 0;
+
 mysqli_data_seek($unpaid_result, 0);
 while ($row = $unpaid_result->fetch_assoc()) {
     $total_unpaid += $row['fine_amount'];
 }
 mysqli_data_seek($unpaid_result, 0);
+
+// Calculate estimated fines for current overdue books
+mysqli_data_seek($current_overdue_result, 0);
+while ($row = $current_overdue_result->fetch_assoc()) {
+    if ($row['days_overdue'] > 0) {
+        $total_estimated_overdue += calculateFine($row['days_overdue']);
+    }
+}
+mysqli_data_seek($current_overdue_result, 0);
 ?>
 
 <h1>💳 My Payments</h1>
@@ -143,24 +167,24 @@ mysqli_data_seek($unpaid_result, 0);
     <?php
     $stats = $conn->prepare("
         SELECT 
-            SUM(CASE WHEN payment_status = 'unpaid' THEN fine_amount ELSE 0 END) as total_unpaid,
-            SUM(CASE WHEN payment_status = 'paid' THEN fine_amount ELSE 0 END) as total_paid,
-            COUNT(CASE WHEN payment_status = 'unpaid' THEN 1 END) as unpaid_count
+            SUM(CASE WHEN rt.payment_status = 'unpaid' THEN rt.fine_amount ELSE 0 END) as total_unpaid,
+            SUM(CASE WHEN rt.payment_status = 'paid' THEN rt.fine_amount ELSE 0 END) as total_paid,
+            COUNT(CASE WHEN rt.payment_status = 'unpaid' THEN 1 END) as unpaid_count
         FROM returning_transactions rt
         JOIN borrowing_transactions bt ON rt.borrow_id = bt.borrow_id
-        WHERE bt.member_id = ? AND fine_amount > 0
+        WHERE bt.member_id = ? AND rt.fine_amount > 0
     ");
     $stats->bind_param("i", $member_id);
     $stats->execute();
     $stats_data = $stats->get_result()->fetch_assoc();
     ?>
     
-    <div class="stat-card red">
-        <h4>Unpaid Fines</h4>
+    <div class="stat-card orange">
+        <h4>Estimated Overdue Fines</h4>
         <div class="stat-number" style="font-size: 1.5rem;">
-            Rp <?php echo number_format($stats_data['total_unpaid'] ?? 0, 0, ',', '.'); ?>
+            Rp <?php echo number_format($total_estimated_overdue, 0, ',', '.'); ?>
         </div>
-        <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;"><?php echo $stats_data['unpaid_count']; ?> transaction(s)</p>
+        <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">From books not yet returned</p>
     </div>
     
     <div class="stat-card green">
@@ -222,7 +246,68 @@ mysqli_data_seek($unpaid_result, 0);
     </div>
 <?php endif; ?>
 
-<!-- Unpaid Fines -->
+<!-- CURRENT OVERDUE BOOKS - NEW SECTION! -->
+<?php if ($current_overdue_result->num_rows > 0): ?>
+    <div class="card">
+        <div class="card-header">
+            <h3>⏰ Current Overdue Books (Estimated Fines)</h3>
+        </div>
+        
+        <div class="alert alert-warning">
+            <strong>📚 Books Not Yet Returned:</strong> These are books you're still borrowing that are past their due date. The fines shown are estimates and will be charged when you return the books.
+        </div>
+        
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Book</th>
+                        <th>Due Date</th>
+                        <th>Days Overdue</th>
+                        <th>Estimated Fine</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php while ($row = $current_overdue_result->fetch_assoc()): ?>
+                        <?php 
+                        $estimated_fine = calculateFine($row['days_overdue']);
+                        ?>
+                        <tr style="background: #fff3cd;">
+                            <td>
+                                <strong><?php echo htmlspecialchars($row['title']); ?></strong><br>
+                                <small><?php echo htmlspecialchars($row['author']); ?></small>
+                            </td>
+                            <td><?php echo date('d M Y', strtotime($row['due_date'])); ?></td>
+                            <td>
+                                <strong style="color: #dc3545; font-size: 1.1rem;">
+                                    <?php echo $row['days_overdue']; ?> days
+                                </strong>
+                            </td>
+                            <td>
+                                <strong style="color: #dc3545; font-size: 1.1rem;">
+                                    Rp <?php echo number_format($estimated_fine, 0, ',', '.'); ?>
+                                </strong>
+                            </td>
+                            <td>
+                                <span class="badge badge-danger">Not Yet Returned</span>
+                            </td>
+                        </tr>
+                    <?php endwhile; ?>
+                </tbody>
+            </table>
+        </div>
+        
+        <div style="background: #f8d7da; border-left: 4px solid #dc3545; padding: 1rem; margin-top: 1rem; border-radius: 5px;">
+            <strong style="color: #721c24;">⚠️ Important:</strong>
+            <p style="margin: 0.5rem 0 0 0; color: #721c24;">
+                These fines will be charged when you return the books. Return them as soon as possible to prevent additional charges. Fine rate: Rp 5,000 per day.
+            </p>
+        </div>
+    </div>
+<?php endif; ?>
+
+<!-- Unpaid Fines (from returned books) -->
 <div class="card">
     <div class="card-header">
         <h3>⚠️ Unpaid Fines (Action Required)</h3>
@@ -290,7 +375,7 @@ mysqli_data_seek($unpaid_result, 0);
         </div>
     <?php else: ?>
         <div style="text-align: center; padding: 3rem;">
-            <p style="font-size: 1.1rem; color: #28a745;">✓ No unpaid fines. All clear!</p>
+            <p style="font-size: 1.1rem; color: #28a745;">✓ No unpaid fines from returned books!</p>
         </div>
     <?php endif; ?>
 </div>
