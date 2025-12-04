@@ -11,55 +11,73 @@ requireLogin();
     <link rel="stylesheet" href="/library-system/assets/css/style.css">
     <style>
         /* Dropdown Menu Styles */
+        .nav-menu {
+            position: relative;
+        }
+        
         .nav-menu .dropdown {
             position: relative;
+            display: inline-block;
         }
         
         .dropdown-toggle {
             cursor: pointer;
             user-select: none;
+            display: inline-block;
         }
         
         .dropdown-menu {
             display: none;
             position: absolute;
-            top: 100%;
-    left: 0;
-    background: white;
-    min-width: 200px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    border-radius: 8px;
-    padding: 0.5rem 0;
-    margin-top: 0.5rem;
-    z-index: 1000;
+            top: calc(100% - 0.25rem);
+            left: 0;
+            background: white;
+            min-width: 220px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 0.75rem 0 0.5rem 0;
+            z-index: 9999;
+            border: 1px solid rgba(0,0,0,0.1);
         }
-
-        .nav-menu li.dropdown:hover .dropdown-menu {
-    display: block;
-}
         
-        .dropdown:hover .dropdown-menu {
+        /* Add padding to dropdown container to bridge the gap */
+        .nav-menu .dropdown::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            height: 0.25rem;
+            display: block;
+        }
+        
+        /* Show dropdown on hover */
+        .nav-menu .dropdown:hover .dropdown-menu {
             display: block;
         }
         
         .dropdown-menu li {
             margin: 0;
+            list-style: none;
         }
         
         .dropdown-menu a {
-    display: block;
-    padding: 0.75rem 1.2rem;
-    color: #333;
-    text-decoration: none;
-    transition: background 0.2s;
-    border-radius: 0;
-}
+            display: block;
+            padding: 0.75rem 1.2rem;
+            color: #333;
+            text-decoration: none;
+            transition: all 0.2s;
+            border-radius: 0;
+            white-space: nowrap;
+            margin: 0 0.5rem;
+            border-radius: 4px;
+        }
         
         .dropdown-menu a:hover {
-    background: rgba(102, 126, 234, 0.1);
-    transform: none; /* Override the translateY from nav links */
-}
-
+            background: rgba(102, 126, 234, 0.1);
+            transform: none;
+            color: #667eea;
+        }
     </style>
 </head>
 <body>
@@ -82,14 +100,16 @@ requireLogin();
                     
                     <!-- Damage Dropdown -->
                     <li class="dropdown">
-                        <a href="#" class="dropdown-toggle" style="background: rgba(220,53,69,0.15); border-radius: 3px;">🔨 Damage ▾</a>
+                        <a href="javascript:void(0)" class="dropdown-toggle" style="background: rgba(220,53,69,0.15); border-radius: 8px;">
+                            🔨 Damage ▾
+                        </a>
                         <ul class="dropdown-menu">
                             <li><a href="/library-system/modules/transactions/report_damage.php">Report Damage</a></li>
                             <li><a href="/library-system/modules/transactions/damage_records.php">Damage Records</a></li>
                         </ul>
                     </li>
                     
-                    <li><a href="/library-system/modules/admin/time_control.php" style="background: rgba(255,193,7,0.2); border-radius: 3px;">⏰ Time</a></li>
+                    <li><a href="/library-system/modules/admin/time_control.php" style="background: rgba(255,193,7,0.2); border-radius: 8px;">⏰ Time</a></li>
                 <?php elseif (isMember()): ?>
                     <!-- Member Menu -->
                     <li><a href="/library-system/modules/member/books.php">Browse Books</a></li>
