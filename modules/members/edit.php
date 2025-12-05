@@ -1,6 +1,6 @@
 <?php
-$pageTitle = 'Edit Member';
-require_once '../../includes/header.php';
+// ✅ STEP 1: Include only database config (no HTML output)
+require_once '../../config/database.php';
 
 $errors = [];
 $member_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
@@ -13,6 +13,7 @@ $result = $stmt->get_result();
 
 if ($result->num_rows == 0) {
     $_SESSION['error'] = 'Member not found';
+    $stmt->close();
     header("Location: index.php");
     exit();
 }
@@ -20,7 +21,7 @@ if ($result->num_rows == 0) {
 $member = $result->fetch_assoc();
 $stmt->close();
 
-// Process form submission
+// ✅ STEP 2: Process form submission BEFORE including header
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $name = clean($_POST['name']);
     $email = clean($_POST['email']);
@@ -60,14 +61,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         if ($stmt->execute()) {
             $_SESSION['success'] = 'Member updated successfully!';
+            $stmt->close();
+            // ✅ REDIRECT BEFORE including header.php
             header("Location: index.php");
             exit();
         } else {
             $errors[] = 'Failed to update member: ' . $conn->error;
+            $stmt->close();
         }
-        $stmt->close();
     }
 }
+
+// ✅ STEP 3: NOW include header (after all redirects)
+$pageTitle = 'Edit Member';
+require_once '../../includes/header.php';
 ?>
 
 <div class="card">

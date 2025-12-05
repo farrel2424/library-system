@@ -1,6 +1,6 @@
 <?php
-$pageTitle = 'Edit Book';
-require_once '../../includes/header.php';
+// ✅ STEP 1: Include only database config (no HTML output)
+require_once '../../config/database.php';
 
 $errors = [];
 $book_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
@@ -13,6 +13,7 @@ $result = $stmt->get_result();
 
 if ($result->num_rows == 0) {
     $_SESSION['error'] = 'Book not found';
+    $stmt->close();
     header("Location: index.php");
     exit();
 }
@@ -20,7 +21,7 @@ if ($result->num_rows == 0) {
 $book = $result->fetch_assoc();
 $stmt->close();
 
-// Process form submission
+// ✅ STEP 2: Process form submission BEFORE including header
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $title = clean($_POST['title']);
     $author = clean($_POST['author']);
@@ -48,14 +49,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         if ($stmt->execute()) {
             $_SESSION['success'] = 'Book updated successfully!';
+            $stmt->close();
+            // ✅ REDIRECT BEFORE including header.php
             header("Location: index.php");
             exit();
         } else {
             $errors[] = 'Failed to update book: ' . $conn->error;
+            $stmt->close();
         }
-        $stmt->close();
     }
 }
+
+// ✅ STEP 3: NOW include header (after all redirects)
+$pageTitle = 'Edit Book';
+require_once '../../includes/header.php';
 ?>
 
 <div class="card">

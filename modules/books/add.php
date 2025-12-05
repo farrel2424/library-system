@@ -1,10 +1,10 @@
 <?php
-$pageTitle = 'Add New Book';
-require_once '../../includes/header.php';
+// ✅ STEP 1: Include only database config (no HTML output)
+require_once '../../config/database.php';
 
 $errors = [];
 
-// Process form submission
+// ✅ STEP 2: Process form submission BEFORE including header
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $title = clean($_POST['title']);
     $author = clean($_POST['author']);
@@ -33,14 +33,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         if ($stmt->execute()) {
             $_SESSION['success'] = 'Book added successfully!';
+            $stmt->close();
+            // ✅ REDIRECT BEFORE including header.php
             header("Location: index.php");
             exit();
         } else {
             $errors[] = 'Failed to add book: ' . $conn->error;
+            $stmt->close();
         }
-        $stmt->close();
     }
 }
+
+// ✅ STEP 3: NOW include header (after all redirects)
+$pageTitle = 'Add New Book';
+require_once '../../includes/header.php';
 ?>
 
 <div class="card">
