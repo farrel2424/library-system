@@ -22,6 +22,7 @@ $result = $conn->query($query);
                     <th>Author</th>
                     <th>Category</th>
                     <th>ISBN</th>
+                    <th>Price</th>
                     <th>Stock</th>
                     <th>Status</th>
                     <th>Actions</th>
@@ -36,6 +37,11 @@ $result = $conn->query($query);
                             <td><?php echo htmlspecialchars($row['author']); ?></td>
                             <td><?php echo htmlspecialchars($row['category']); ?></td>
                             <td><?php echo htmlspecialchars($row['isbn']); ?></td>
+                            <td>
+                                <strong style="color: #667eea;">
+                                    Rp <?php echo number_format($row['book_value'], 0, ',', '.'); ?>
+                                </strong>
+                            </td>
                             <td>
                                 <strong><?php echo $row['stock']; ?></strong>
                                 <?php if ($row['stock'] == 0): ?>
@@ -62,12 +68,17 @@ $result = $conn->query($query);
                     <?php endwhile; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="8" class="text-center">No books found</td>
+                        <td colspan="9" class="text-center">No books found</td>
                     </tr>
                 <?php endif; ?>
             </tbody>
         </table>
     </div>
+</div>
+
+<div class="alert alert-info">
+    <strong>💡 About Book Prices:</strong><br>
+    The price field represents the replacement value of the book. This is used to calculate damage fines when books are returned in damaged condition. Damage fines are calculated as a percentage of this value based on the severity of the damage.
 </div>
 
 <?php require_once '../../includes/footer.php'; ?>

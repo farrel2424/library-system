@@ -120,20 +120,45 @@ function showAlert($message, $type = 'info') {
 
 /**
  * Get current date/time (with time manipulation for testing)
- * Only staff can manipulate time
+ * Works for ALL users - stored in database, not session
  */
 function getCurrentDateTime() {
-    if (isStaff() && isset($_SESSION['time_offset'])) {
-        return date('Y-m-d H:i:s', strtotime($_SESSION['time_offset']));
+    global $conn;
+    
+    // Get time offset from database (affects ALL users)
+    $result = $conn->query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_time_offset'");
+    
+    if ($result && $result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        $time_offset = $row['setting_value'];
+        
+        if (!empty($time_offset)) {
+            return date('Y-m-d H:i:s', strtotime($time_offset));
+        }
     }
+    
     return date('Y-m-d H:i:s');
 }
 
 function getCurrentDate() {
-    if (isStaff() && isset($_SESSION['time_offset'])) {
-        return date('Y-m-d', strtotime($_SESSION['time_offset']));
+    $datetime = getCurrentDateTime();
+    return date('Y-m-d', strtotime($datetime));
+}
+
+/**
+ * Check if time is being manipulated (for display purposes)
+ */
+function isTimeManipulated() {
+    global $conn;
+    
+    $result = $conn->query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_time_offset'");
+    
+    if ($result && $result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        return !empty($row['setting_value']);
     }
-    return date('Y-m-d');
+    
+    return false;
 }
 
 /**
@@ -270,9 +295,14 @@ function generateReservationNumber() {
 /**
  * Check and suspend members with unpaid fines over 2 weeks
  * Now includes damage fines in the calculation
+ * Uses manipulated time if set
  */
 function checkAndSuspendMembers() {
     global $conn;
+    
+    // Use manipulated time if set
+    $currentDate = getCurrentDate();
+    $cutoffDate = date('Y-m-d', strtotime($currentDate . ' -14 days'));
     
     // Find members with unpaid late return fines OR damage fines older than 2 weeks
     $query = "
@@ -284,7 +314,7 @@ function checkAndSuspendMembers() {
                    JOIN borrowing_transactions bt2 ON bdr.borrow_id = bt2.borrow_id
                    WHERE bt2.member_id = bt.member_id 
                    AND bdr.payment_status = 'unpaid'
-                   AND bdr.damage_date <= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+                   AND bdr.damage_date <= '$cutoffDate'
                ), 0) as total_damage_fines,
                MIN(COALESCE(rt.return_date, bdr.damage_date)) as oldest_fine_date
         FROM borrowing_transactions bt
@@ -292,21 +322,23 @@ function checkAndSuspendMembers() {
         LEFT JOIN returning_transactions rt ON bt.borrow_id = rt.borrow_id 
             AND rt.payment_status = 'unpaid' 
             AND rt.fine_amount > 0
-            AND rt.return_date <= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+            AND rt.return_date <= '$cutoffDate'
         LEFT JOIN book_damage_records bdr ON bt.borrow_id = bdr.borrow_id
             AND bdr.payment_status = 'unpaid'
-            AND bdr.damage_date <= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+            AND bdr.damage_date <= '$cutoffDate'
         WHERE m.status = 'active'
         AND (
-            (rt.payment_status = 'unpaid' AND rt.fine_amount > 0 AND rt.return_date <= DATE_SUB(CURDATE(), INTERVAL 14 DAY))
+            (rt.payment_status = 'unpaid' AND rt.fine_amount > 0 AND rt.return_date <= '$cutoffDate')
             OR
-            (bdr.payment_status = 'unpaid' AND bdr.damage_date <= DATE_SUB(CURDATE(), INTERVAL 14 DAY))
+            (bdr.payment_status = 'unpaid' AND bdr.damage_date <= '$cutoffDate')
         )
         GROUP BY bt.member_id, m.status
         HAVING (total_late_fines + total_damage_fines) > 0
     ";
     
     $result = $conn->query($query);
+    
+    $suspended_count = 0;
     
     if ($result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
@@ -319,7 +351,7 @@ function checkAndSuspendMembers() {
             $stmt->close();
             
             // Create suspension penalty record
-            $suspension_date = date('Y-m-d H:i:s');
+            $suspension_date = getCurrentDateTime();
             $stmt = $conn->prepare("
                 INSERT INTO suspension_penalties 
                 (member_id, total_unpaid_fines, total_damage_fines, suspension_date, penalty_amount)
@@ -328,21 +360,28 @@ function checkAndSuspendMembers() {
             $stmt->bind_param("idds", $row['member_id'], $row['total_late_fines'], $row['total_damage_fines'], $suspension_date);
             $stmt->execute();
             $stmt->close();
+            
+            $suspended_count++;
         }
     }
+    
+    return $suspended_count;
 }
 
 /**
  * Check and cancel expired reservations
+ * Uses manipulated time if set
  */
 function cancelExpiredReservations() {
     global $conn;
+    
+    $currentDateTime = getCurrentDateTime();
     
     // Find expired reservations
     $query = "SELECT r.reservation_id, r.book_id 
               FROM reservations r 
               WHERE r.status = 'pending' 
-              AND r.expiry_date < NOW()";
+              AND r.expiry_date < '$currentDateTime'";
     
     $result = $conn->query($query);
     
@@ -362,4 +401,65 @@ function cancelExpiredReservations() {
         }
     }
 }
-?>          
+
+/**
+ * Check member status and update session if suspended
+ * Call this on every member page load
+ */
+function checkMemberStatus() {
+    global $conn;
+    
+    if (!isMember()) {
+        return;
+    }
+    
+    $member_id = $_SESSION['member_id'];
+    
+    // First, run auto-suspension check
+    checkAndSuspendMembers();
+    
+    // Then check this member's current status
+    $stmt = $conn->prepare("SELECT status FROM members_data WHERE member_id = ?");
+    $stmt->bind_param("i", $member_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result->num_rows > 0) {
+        $member = $result->fetch_assoc();
+        
+        // If member is suspended, log them out
+        if ($member['status'] == 'suspended') {
+            // Check if there's a suspension penalty
+            $penalty_check = $conn->prepare("
+                SELECT penalty_id, penalty_amount 
+                FROM suspension_penalties 
+                WHERE member_id = ? AND payment_status = 'unpaid' 
+                ORDER BY suspension_date DESC LIMIT 1
+            ");
+            $penalty_check->bind_param("i", $member_id);
+            $penalty_check->execute();
+            $penalty_result = $penalty_check->get_result();
+            
+            if ($penalty_result->num_rows > 0) {
+                $penalty = $penalty_result->fetch_assoc();
+                $_SESSION['suspended_member_id'] = $member_id;
+                $_SESSION['suspended_member_email'] = $_SESSION['member_email'];
+                $_SESSION['penalty_amount'] = $penalty['penalty_amount'];
+            }
+            $penalty_check->close();
+            
+            // Clear member session
+            unset($_SESSION['member_id']);
+            unset($_SESSION['member_name']);
+            unset($_SESSION['member_email']);
+            unset($_SESSION['user_type']);
+            
+            // Redirect to login with suspension message
+            $_SESSION['error'] = 'suspended_with_penalty';
+            header("Location: /library-system/modules/auth/login.php");
+            exit();
+        }
+    }
+    $stmt->close();
+}
+?>

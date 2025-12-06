@@ -10,6 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $author = clean($_POST['author']);
     $category = clean($_POST['category']);
     $isbn = clean($_POST['isbn']);
+    $book_value = floatval($_POST['book_value']);
     $stock = intval($_POST['stock']);
     $status = clean($_POST['status']);
     
@@ -18,6 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (empty($author)) $errors[] = 'Author is required';
     if (empty($category)) $errors[] = 'Category is required';
     if ($stock < 0) $errors[] = 'Stock cannot be negative';
+    if ($book_value <= 0) $errors[] = 'Book value must be greater than 0';
     
     // Auto-set status based on stock
     if ($stock == 0) {
@@ -28,8 +30,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     
     // Insert if no errors
     if (empty($errors)) {
-        $stmt = $conn->prepare("INSERT INTO books_data (title, author, category, isbn, stock, status) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("ssssis", $title, $author, $category, $isbn, $stock, $status);
+        $stmt = $conn->prepare("INSERT INTO books_data (title, author, category, isbn, book_value, stock, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("ssssdi s", $title, $author, $category, $isbn, $book_value, $stock, $status);
         
         if ($stmt->execute()) {
             $_SESSION['success'] = 'Book added successfully!';
@@ -93,6 +95,16 @@ require_once '../../includes/header.php';
             <input type="text" name="isbn" id="isbn" class="form-control" 
                    value="<?php echo isset($_POST['isbn']) ? htmlspecialchars($_POST['isbn']) : ''; ?>"
                    placeholder="978-0132350884">
+        </div>
+        
+        <div class="form-group">
+            <label for="book_value">Book Value / Price (Rp) *</label>
+            <input type="number" name="book_value" id="book_value" class="form-control" 
+                   value="<?php echo isset($_POST['book_value']) ? $_POST['book_value'] : '150000'; ?>" 
+                   min="1000" step="1000" required>
+            <small style="color: #666;">
+                This price is used to calculate damage fines. Default: Rp 150,000
+            </small>
         </div>
         
         <div class="form-group">

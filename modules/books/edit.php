@@ -1,3 +1,4 @@
+
 <?php
 // ✅ STEP 1: Include only database config (no HTML output)
 require_once '../../config/database.php';
@@ -27,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $author = clean($_POST['author']);
     $category = clean($_POST['category']);
     $isbn = clean($_POST['isbn']);
+    $book_value = floatval($_POST['book_value']);
     $stock = intval($_POST['stock']);
     
     // Validation
@@ -34,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (empty($author)) $errors[] = 'Author is required';
     if (empty($category)) $errors[] = 'Category is required';
     if ($stock < 0) $errors[] = 'Stock cannot be negative';
+    if ($book_value <= 0) $errors[] = 'Book value must be greater than 0';
     
     // Auto-set status based on stock
     if ($stock == 0) {
@@ -44,8 +47,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     
     // Update if no errors
     if (empty($errors)) {
-        $stmt = $conn->prepare("UPDATE books_data SET title = ?, author = ?, category = ?, isbn = ?, stock = ?, status = ? WHERE book_id = ?");
-        $stmt->bind_param("ssssisi", $title, $author, $category, $isbn, $stock, $status, $book_id);
+        $stmt = $conn->prepare("UPDATE books_data SET title = ?, author = ?, category = ?, isbn = ?, book_value = ?, stock = ?, status = ? WHERE book_id = ?");
+        $stmt->bind_param("ssssdisi", $title, $author, $category, $isbn, $book_value, $stock, $status, $book_id);
         
         if ($stmt->execute()) {
             $_SESSION['success'] = 'Book updated successfully!';
@@ -107,6 +110,17 @@ require_once '../../includes/header.php';
             <label for="isbn">ISBN</label>
             <input type="text" name="isbn" id="isbn" class="form-control" 
                    value="<?php echo htmlspecialchars(isset($_POST['isbn']) ? $_POST['isbn'] : $book['isbn']); ?>">
+        </div>
+        
+        <div class="form-group">
+            <label for="book_value">Book Value / Price (Rp) *</label>
+            <input type="number" name="book_value" id="book_value" class="form-control" 
+                   value="<?php echo isset($_POST['book_value']) ? $_POST['book_value'] : $book['book_value']; ?>" 
+                   min="1000" step="1000" required>
+            <small style="color: #666;">
+                Current value: Rp <?php echo number_format($book['book_value'], 0, ',', '.'); ?>. 
+                This is used to calculate damage fines.
+            </small>
         </div>
         
         <div class="form-group">
