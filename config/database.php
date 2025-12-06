@@ -119,49 +119,6 @@ function showAlert($message, $type = 'info') {
 }
 
 /**
- * Get current date/time (with time manipulation for testing)
- * Works for ALL users - stored in database, not session
- */
-function getCurrentDateTime() {
-    global $conn;
-    
-    // Get time offset from database (affects ALL users)
-    $result = $conn->query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_time_offset'");
-    
-    if ($result && $result->num_rows > 0) {
-        $row = $result->fetch_assoc();
-        $time_offset = $row['setting_value'];
-        
-        if (!empty($time_offset)) {
-            return date('Y-m-d H:i:s', strtotime($time_offset));
-        }
-    }
-    
-    return date('Y-m-d H:i:s');
-}
-
-function getCurrentDate() {
-    $datetime = getCurrentDateTime();
-    return date('Y-m-d', strtotime($datetime));
-}
-
-/**
- * Check if time is being manipulated (for display purposes)
- */
-function isTimeManipulated() {
-    global $conn;
-    
-    $result = $conn->query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_time_offset'");
-    
-    if ($result && $result->num_rows > 0) {
-        $row = $result->fetch_assoc();
-        return !empty($row['setting_value']);
-    }
-    
-    return false;
-}
-
-/**
  * Calculate fine for late returns
  * Fine rate: 5000 IDR per day
  */
@@ -224,7 +181,7 @@ function recordBookDamage($borrowId, $damageTypeId, $damageNotes, $bookValue, $s
     global $conn;
     
     $damageFine = calculateDamageFine($bookValue, $damageTypeId);
-    $damageDate = getCurrentDate();
+    $damageDate = date('Y-m-d');
     
     $stmt = $conn->prepare("
         INSERT INTO book_damage_records 
@@ -295,14 +252,12 @@ function generateReservationNumber() {
 /**
  * Check and suspend members with unpaid fines over 2 weeks
  * Now includes damage fines in the calculation
- * Uses manipulated time if set
  */
 function checkAndSuspendMembers() {
     global $conn;
     
-    // Use manipulated time if set
-    $currentDate = getCurrentDate();
-    $cutoffDate = date('Y-m-d', strtotime($currentDate . ' -14 days'));
+    $currentDate = date('Y-m-d');
+    $cutoffDate = date('Y-m-d', strtotime('-14 days'));
     
     // Find members with unpaid late return fines OR damage fines older than 2 weeks
     $query = "
@@ -351,7 +306,7 @@ function checkAndSuspendMembers() {
             $stmt->close();
             
             // Create suspension penalty record
-            $suspension_date = getCurrentDateTime();
+            $suspension_date = date('Y-m-d H:i:s');
             $stmt = $conn->prepare("
                 INSERT INTO suspension_penalties 
                 (member_id, total_unpaid_fines, total_damage_fines, suspension_date, penalty_amount)
@@ -370,12 +325,11 @@ function checkAndSuspendMembers() {
 
 /**
  * Check and cancel expired reservations
- * Uses manipulated time if set
  */
 function cancelExpiredReservations() {
     global $conn;
     
-    $currentDateTime = getCurrentDateTime();
+    $currentDateTime = date('Y-m-d H:i:s');
     
     // Find expired reservations
     $query = "SELECT r.reservation_id, r.book_id 

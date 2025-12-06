@@ -1,6 +1,6 @@
 <?php
-$pageTitle = 'Manage Reservations';
-require_once '../../includes/header.php';
+// ✅ NO OUTPUT before this point - include database first
+require_once '../../config/database.php';
 
 // Only staff can access
 requireStaff();
@@ -8,7 +8,7 @@ requireStaff();
 // Cancel expired reservations
 cancelExpiredReservations();
 
-// Handle verification (mark as collected)
+// ✅ Handle ALL form submissions BEFORE any HTML output
 if (isset($_POST['verify']) && !empty($_POST['verify'])) {
     $reservation_id = intval($_POST['verify']);
     
@@ -56,9 +56,54 @@ if (isset($_POST['verify']) && !empty($_POST['verify'])) {
     }
     $check->close();
     
+    // ✅ REDIRECT BEFORE including header.php
     header("Location: index.php");
     exit();
 }
+
+// Handle cancellation
+if (isset($_GET['cancel']) && !empty($_GET['cancel'])) {
+    $reservation_id = intval($_GET['cancel']);
+    
+    // Verify ownership and status
+    $check = $conn->prepare("SELECT book_id FROM reservations WHERE reservation_id = ? AND status = 'pending'");
+    $check->bind_param("i", $reservation_id);
+    $check->execute();
+    $result = $check->get_result();
+    
+    if ($result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        
+        $conn->begin_transaction();
+        try {
+            // Update reservation status
+            $stmt = $conn->prepare("UPDATE reservations SET status = 'cancelled' WHERE reservation_id = ?");
+            $stmt->bind_param("i", $reservation_id);
+            $stmt->execute();
+            $stmt->close();
+            
+            // Restore reserved stock
+            $stmt = $conn->prepare("UPDATE books_data SET reserved_stock = reserved_stock - 1 WHERE book_id = ?");
+            $stmt->bind_param("i", $row['book_id']);
+            $stmt->execute();
+            $stmt->close();
+            
+            $conn->commit();
+            $_SESSION['success'] = 'Reservation cancelled successfully.';
+        } catch (Exception $e) {
+            $conn->rollback();
+            $_SESSION['error'] = 'Failed to cancel reservation.';
+        }
+    }
+    $check->close();
+    
+    header("Location: index.php");
+    exit();
+}
+
+// ✅ NOW include header (after all processing)
+$pageTitle = 'Manage Reservations';
+require_once '../../includes/header.php';
 
 // Get all pending reservations
 $pending = $conn->query("

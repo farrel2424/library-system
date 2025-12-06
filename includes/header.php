@@ -114,8 +114,6 @@ if (isMember()) {
                             <li><a href="/library-system/modules/transactions/damage_records.php">Damage Records</a></li>
                         </ul>
                     </li>
-                    
-                    <li><a href="/library-system/modules/admin/time_control.php" style="background: rgba(255,193,7,0.2); border-radius: 8px;">⏰ Time</a></li>
                 <?php elseif (isMember()): ?>
                     <!-- Member Menu -->
                     <li><a href="/library-system/modules/member/books.php">Browse Books</a></li>
@@ -148,18 +146,4 @@ if (isMember()) {
             echo showAlert($_SESSION['error'], 'error');
             unset($_SESSION['error']);
         }
-        
-        // Show time manipulation warning if active (for both staff and members)
-        if (isTimeManipulated()):
-        ?>
-            <div class="alert alert-warning" style="background: linear-gradient(135deg, rgba(255,193,7,0.2) 0%, rgba(255,152,0,0.2) 100%); border-left: 4px solid #ff9800;">
-                <strong>⏰ TIME MANIPULATION ACTIVE</strong><br>
-                System time: <strong><?php echo date('d M Y, H:i:s', strtotime(getCurrentDateTime())); ?></strong>
-                <?php if (isStaff()): ?>
-                    <br><a href="/library-system/modules/admin/time_control.php" style="color: #ff9800; text-decoration: underline;">Manage Time Control</a>
-                <?php else: ?>
-                    <br><small style="color: #856404;">(System is in testing mode)</small>
-                <?php endif; ?>
-            </div>
-        <?php endif; ?>
         ?>
